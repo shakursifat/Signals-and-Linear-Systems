@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 
 def sinusoid(n: np.ndarray, A: float, Omega0: float, phi: float) -> np.ndarray:
-    return (A * np.cos(Omega0*n + phi))
+    raise NotImplementedError
 
 
 def time_shift_sinusoid(n: np.ndarray, A: float, Omega0: float, phi: float, n0: int) -> np.ndarray:

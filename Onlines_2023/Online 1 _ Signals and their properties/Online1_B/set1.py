@@ -17,13 +17,14 @@ def interpolate_signal(t, x, query_t):
     
     # TODO: implement interpolation
     
-    return None
+    return np.interp(t, query_t, x)
 
 def transform_signal(t, x, alpha, beta):
     
     # TODO: implement transformation
     
-    y = None
+    #y = alpha * x
+    y = np.where((t - beta >= -np.pi) & (t - beta <= np.pi), alpha*x, 0)
     return y
 
 def plot_signals(t, x, y, alpha, beta):
@@ -48,6 +49,16 @@ def main():
     while True:
         
         # TODO: complete the loop
+        alpha = input("Enter alpha")
+        if alpha == 'q' :
+            break
+        beta = input("Enter beta")
+
+        alpha = float(alpha)
+        beta = float(beta)
+
+        y = transform_signal(t, x, alpha, beta)
+        plot_signals(t,x, y, alpha, beta)
 
     print("Exiting.")
 
