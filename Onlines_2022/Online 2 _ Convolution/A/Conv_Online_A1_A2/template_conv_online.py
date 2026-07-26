@@ -10,80 +10,49 @@ Instructions:
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-# Paste/Import your Offline 1 implementations here
-# from your_offline1_file import Signal, LTI_System
-
-class Signal:
-    def __init__(self, INF):
-        # TODO: paste your Offline 1 implementation
-        raise NotImplementedError
-
-    def set_value_at_time(self, t, value):
-        raise NotImplementedError
-
-    def shift(self, k):
-        raise NotImplementedError
-
-    def add(self, other):
-        raise NotImplementedError
-
-    def multiply(self, scalar):
-        raise NotImplementedError
-
-    def plot(self, title="Discrete Signal"):
-        raise NotImplementedError
+from signal_lti import DiscreteSignal, LTISystem
 
 
-class LTI_System:
-    def __init__(self, impulse_response: Signal):
-        # TODO: paste your Offline 1 implementation
-        raise NotImplementedError
-
-    def linear_combination_of_impulses(self, input_signal: Signal):
-        raise NotImplementedError
-
-    def output(self, input_signal: Signal):
-        raise NotImplementedError
-
-
-def read_signal_from_file(filename: str, INF: int) -> Signal:
-    sig = Signal(INF)
+def read_signal_from_file(filename: str, INF: int) -> DiscreteSignal:
     with open(filename, "r", encoding="utf-8") as f:
         nstart, nend = map(int, f.readline().strip().split())
         vals = list(map(float, f.readline().strip().split()))
     assert len(vals) == (nend - nstart + 1)
+    sig = DiscreteSignal(nstart, nend)
     for i, v in enumerate(vals):
         sig.set_value_at_time(nstart + i, v)
     return sig
 
 
-def first_difference(sig: Signal) -> Signal:
+def first_difference(sig: DiscreteSignal) -> DiscreteSignal:
     """
     Returns Δsig[n] = sig[n] - sig[n-1] (assume outside range is 0).
     Must use Signal.shift/add/multiply.
     """
-    # TODO
-    raise NotImplementedError
+    # Delay the signal by 1 to get sig[n-1] and subtract it
+    return sig.add(sig.shift(1).multiply(-1))
 
 
-def impulse_from_step_response(step_response: Signal) -> Signal:
+def impulse_from_step_response(step_response: DiscreteSignal) -> DiscreteSignal:
     """
     Given s[n], compute h[n] = s[n] - s[n-1] (with s[-1]=0).
     Must use only Signal operations.
     """
-    # TODO
-    raise NotImplementedError
+    return first_difference(step_response)
 
 
-def output_using_step_response(x: Signal, step_response: Signal) -> Signal:
+def output_using_step_response(x: DiscreteSignal, step_response: DiscreteSignal) -> DiscreteSignal:
     """
     Compute y[n] using ONLY step response:
         y = (Δx * s)
     You must reuse your Offline 1 LTI_System machinery (linear combination of impulses).
     """
-    # TODO
-    raise NotImplementedError
+    # Calculate Δx[n]
+    dx = first_difference(x)
+    
+    # Convolve Δx with the step response s
+    system = LTISystem(step_response)
+    return system.output(dx)
 
 
 # Main (demo workflow)
@@ -92,26 +61,26 @@ if __name__ == "__main__":
     INF = 50
 
     # ---- Load provided files ----
-    s = read_signal_from_file("step_response.txt", INF)
-    x = read_signal_from_file("input_signal.txt", INF)
+    s = read_signal_from_file(r"Onlines_2022\Online 2 _ Convolution\A\Conv_Online_A1_A2\step_response.txt", INF)
+    x = read_signal_from_file(r"Onlines_2022\Online 2 _ Convolution\A\Conv_Online_A1_A2\input_signal.txt", INF)
 
     # ---- Part 1: recover impulse response ----
-    h = None
+    h = impulse_from_step_response(s)
 
     s.plot("Step Response s[n]")
     h.plot("Recovered Impulse Response h[n] = s[n] - s[n-1]")
 
     # ---- Part 2: output using only step response ----
-    dx = None
-    y_s = None
+    dx = first_difference(x)
+    y_s = output_using_step_response(x, s)
 
     x.plot("Input x[n]")
     dx.plot("First Difference Δx[n]")
     y_s.plot("Output y_s[n] computed via step response")
 
     # ---- Part 3: verify with impulse-response method ----
-    sys_h = None
-    y_h = None
+    sys_h = LTISystem(h)
+    y_h = sys_h.output(x)
     y_h.plot("Output y_h[n] computed via impulse response")
 
     # Check if outputs match closely
@@ -119,3 +88,5 @@ if __name__ == "__main__":
         print("Outputs match closely!")
     else:
         print("Outputs differ!")
+
+    plt.show()
