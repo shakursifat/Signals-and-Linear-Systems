@@ -1,0 +1,7 @@
+numpy>=2.0
+matplotlib>=3.5
+imageio>=2.9
+python3 task1/fs_redrawer.py task1/svgs/heart.svg 150 task1/outputs/heart_comparison.png task1/outputs/heart_epicycles.gif
+python3 task1/fs_redrawer.py task1/svgs/circle.svg 150 task1/outputs/circle_comparison.png task1/outputs/circle_epicycles.gif
+python3 task1/fs_redrawer.py task1/svgs/infinity.svg 150 task1/outputs/infinity_comparison.png task1/outputs/infinity_epicycles.gif
+python3 task1/fs_redrawer.py task1/svgs/star.svg 150 task1/outputs/star_comparison.png task1/outputs/star_epicycles.gif
