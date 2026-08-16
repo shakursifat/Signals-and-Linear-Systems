@@ -62,6 +62,7 @@ class FourierEpicycles:
         """
         for n in range(-self.N, self.N + 1):
             self.coeffs[n] = self.calculate_cn(n)
+            #print(abs(self.coeffs[n])*abs(self.coeffs[n]))
             #print(f"{n} = {self.coeffs[n]}")
         #print(len(self.coeffs))
 
@@ -86,25 +87,90 @@ class FourierEpicycles:
             return f_hat.item()
         return f_hat
 
+    
+    def prune_harmonics_by_energy(self, r):
+        """
+        Task 1: Retain the minimal subset of most energetic harmonics 
+        that account for at least a fraction `r` of the total energy.
+        """
+        # 1. Calculate the energy of each harmonic (|c_n|^2)
+        energies = {n: np.abs(coeff)**2 for n, coeff in self.coeffs.items()}
+        total_energy = sum(energies.values())
+        
+        # 2. Sort harmonics by energy in descending order
+        sorted_harmonics = sorted(energies.keys(), key=lambda n: energies[n], reverse=True)
+        
+        accumulated_energy = 0.0
+        retained_count = 0
+        retained_set = set()
+        
+        # 3. Accumulate energy until the target ratio is met
+        target_energy = r * total_energy
+        for n in sorted_harmonics:
+            accumulated_energy += energies[n]
+            retained_count += 1
+            retained_set.add(n)
+            if accumulated_energy >= target_energy:
+                break
+                
+        # 4. Zero out the coefficients of the discarded harmonics
+        for n in self.coeffs.keys():
+            if n not in retained_set:
+                self.coeffs[n] = 0.0 + 0.0j
+                
+        actual_energy_ratio = accumulated_energy / total_energy
+        return retained_count, actual_energy_ratio
+
+    def evaluate_reconstruction_error(self):
+        """
+        Task 2: Compute the Mean Squared Error (MSE) between the 
+        ground-truth signal and the approximated signal.
+        """
+        # 1. Generate the reconstructed signal using current coefficients
+        f_hat = self.approximate(self.t)
+        
+        # 2. Compute the MSE
+        error_magnitude_squared = np.abs(self.signal - f_hat)**2
+        mse = np.mean(error_magnitude_squared)
+        
+        return mse
+
 
 if __name__ == "__main__":
-    import sys
-    from pathlib import Path
+    import matplotlib.pyplot as plt
+    from epicycle_animation import plot_comparison
+    from svg_utils import load_svg_path
 
-    # Usage: python3 assignment.py <path_to_svg> [n_harmonics] [comparison_png_path] [gif_path]
-    if len(sys.argv) < 2:
-        print("Usage: python3 assignment.py <path_to_svg> [n_harmonics] [comparison_png_path] [gif_path]")
-        print("Example: python3 assignment.py svgs/heart.svg 150 heart_comparison.png heart_epicycles.gif")
-        sys.exit(1)
-
-    svg_path = sys.argv[1]
-    N_HARMONICS = int(sys.argv[2]) if len(sys.argv) > 2 else 150
-    stem = Path(svg_path).stem
-    comparison_path = sys.argv[3] if len(sys.argv) > 3 else f"{stem}_comparison.png"
-    gif_path = sys.argv[4] if len(sys.argv) > 4 else f"{stem}_epicycles.gif"
-
-    t, z = load_svg_path(svg_path, num_points=1000)
-    fs = FourierEpicycles(t, z, n_harmonics=N_HARMONICS)
-    fs.calculate_all_coefficients()
-
-    save_outputs(fs, z, comparison_path, gif_path, num_frames=240)
+    # Load the specific heart SVG as instructed
+    t, z = load_svg_path("Onlines_2023/Online 3 _ CFT/A/svgs/heart.svg", num_points=1000)
+    
+    # Define the target energy ratios
+    ratios = [0.96, 0.98, 0.99, 1.00]
+    
+    # Print the formatted table header
+    print(f"{'Target Ratio':<15}| {'Harmonics Retained':<20}| {'Actual Energy Ratio':<20}| {'MSE'}")
+    print("-" * 75)
+    
+    for r in ratios:
+        # Re-initialize and calculate all coefficients from scratch 
+        # to ensure we don't apply pruning to already-pruned data
+        fs = FourierEpicycles(t, z, n_harmonics=150)
+        fs.calculate_all_coefficients()
+        
+        # Perform harmonic pruning
+        retained_count, actual_ratio = fs.prune_harmonics_by_energy(r)
+        
+        # Evaluate reconstruction error
+        mse = fs.evaluate_reconstruction_error()
+        
+        # Print the formatted output row
+        print(f"{r:<15.2f}| {retained_count:<20}| {actual_ratio:<20.4f}| {mse:.6f}")
+        
+        # Save the visual comparison plot
+        fig, ax = plt.subplots(figsize=(5, 5))
+        plot_comparison(fs, z, ax=ax)
+        output_filename = f"heart_pruned_{r}.png"
+        fig.savefig(output_filename, dpi=120)
+        plt.close(fig)
+        
+        print(f"-> Saved: {output_filename}\n")
