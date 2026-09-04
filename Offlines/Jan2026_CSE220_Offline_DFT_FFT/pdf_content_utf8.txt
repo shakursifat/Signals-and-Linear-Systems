@@ -1,0 +1,366 @@
+=== PAGE 1 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+Bangladesh University of Engineering and Technology
+Department of Computer Science and Engineering
+Offline 3 | DFT & FFT
+CSE 220 — Signals and Linear Systems
+1 Overview
+You will write one transform core — a naive O(N2) DFT and a radix-2 O(N logN) FFT —
+and point it at two problems that look nothing alike. Task A multiplies integers with tens
+of thousands of digits by treating their digits as polynomial coefficients. Task B blurs a
+photograph with a large lens-shaped kernel. Both are the same theorem: convolution in one
+domain is pointwise multiplication in the other. Both end with a measured runtime curve of
+your DFT against your FFT.
+1.1 Files
+You write these three
+(cid:136)
+transforms.py — DFTAnalyzer, FFTTransformer, and the optional bonus engine.
+Both tasks import this one file.
+(cid:136)
+bigmul.py — Task A. image conv.py — Task B.
+Each is a skeleton with the required signatures and docstrings. Fill in every TODO;
+do not rename anything.
+The two run benchmark functions are also already written: they call your code and produce
+the required plots, so the timing studies cost you nothing but the time to run them.
+Provided, and not to be modified: io utils.py (input files, reproducible random operands,
+report writing), image utils.py (image load/save, blur kernels, comparison figures) and
+bench utils.py (timing, log-log plots). These are image handling and plain I/O only —
+no transform, no convolution and no padding logic lives in them. You also get inputs/,
+images/ and expected outputs/ (what a correct implementation produces; the timings
+there are from one particular machine).
+BUET - CSE Department 1 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 2 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+1.2 Restrictions
+(cid:136) ✗ No numpy.fft, scipy.fft, scipy.signal, numpy.convolve, numpy.correlate,
+scipy.ndimage or cv2 — anywhere, including in code you use ”just to check”.
+(cid:136) ✗ No Python big-integer multiplication of the operands in Task A. Python’s integers may
+be used in exactly one place: verifying your answer at the end.
+(cid:136) ✓ NumPy for ordinary array arithmetic, plus the provided modules and the standard
+library. Install with pip install numpy matplotlib pillow.
+1.3 Transform, multiply, transform back
+Convolving two sequences of length n costs n2 multiply-adds, because every sample of one
+meets every sample of the other. The convolution theorem replaces that with three cheaper
+steps:
+(cid:16) (cid:17)
+a∗c = IDFT DFT{a}·DFT{c} ,
+wherethemultiplicationinthemiddleispointwise —entryk ofonespectrumtimesentryk of
+the other, N scalar products and nothing more. Two forward transforms, N multiplications,
+one inverse transform: with the naive DFT that is still O(N2) and buys you nothing, but
+with the FFT the whole pipeline costs O(N logN).
+The pipeline, in both tasks
+a, c −→ pad −→ FFT −→ A, C −→ multiply pointwise −→ A*C −→
+IFFT −→ a∗c
+Why does convolution become a pointwise product? A convolution is built out of shifts,
+and complex exponentials are the sequences that shifting leaves alone apart from a constant
+factor: delaying e2πjkn/N by one sample just multiplies it by e−2πjk/N. The DFT rewrites
+a signal in that basis. In the time domain every output sample depends on every input
+sample, so the components are hopelessly tangled; in the frequency basis each component is
+only ever scaled, never mixed with its neighbours, so the whole convolution decouples into
+N independent scalar multiplications. The FFT is what makes the change of basis cheap
+enough to be worth doing.
+1.4 The rule both tasks depend on: pad before you multiply
+There is one catch, and it is the single place where a correct-looking implementation quietly
+produces wrong answers.
+A length-N DFT knows only N output slots, and the convolution you want is longer than
+that. Multiplying two length-N spectra pointwise and transforming back gives circular
+convolution with period N, in which anything running past the last slot wraps around and
+is added back onto the start:
+N−1
+(cid:88)
+(a⊛ c)[m] = a[i] c[(m−i) mod N].
+N
+i=0
+BUET - CSE Department 2 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 3 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+What you want is linear convolution, where nothing wraps. For inputs of lengths n and q
+it has n+q −1 entries — longer than either input, which is exactly why the wrap happens
+if you do not make room:
+(cid:88)
+(a∗c)[m] = a[i]c[m−i], m = 0,1,...,n+q −2.
+i
+The padding rule
+Zero-pad both inputs to a common length N ≥ n + q − 1 before transforming. The
+extra entries are zeros, so they change none of the arithmetic — they simply give
+the overflowing coefficients somewhere to land. With the room made, the circular
+convolution of the padded arrays is exactly the linear convolution of the originals. For
+the radix-2 FFT, pad further to next power of two(n+q −1).
+Example: a = [1,2], c = [3,4], so the linear result needs 3 entries. At N = 2 you get
+[3+8, 4+6] = [11,10] — the x2 coefficient has wrapped onto the constant term. Padded
+to N = 4 you get [3,10,8,0], the correct (1+2x)(3+4x) = 3+10x+8x2.
+2 Task A: multiplying enormous integers
+2.1 Digits are polynomial coefficients
+Write an integer in base B as digits a ,a ,...,a , least significant first, so that A =
+0 1 n−1
+(cid:80) a Bi. Read that as a polynomial A(x) = (cid:80) a xi evaluated at x = B. Multiplying two
+i i i i
+integers is then multiplying two polynomials, and the coefficients of a polynomial product
+are the linear convolution of the coefficient arrays:
+(cid:88)
+p = a c = (a∗c)[m].
+m i j
+i+j=m
+Concretely, take 1234×5678 in base 10, so a = [4,3,2,1] and c = [8,7,6,5] (least significant
+first). The convolution is
+p = [32, 52, 61, 60, 34, 16, 5],
+for instance p = a c +a c +a c = 24+21+16 = 61. These are not digits yet — they are
+2 0 2 1 1 2 0
+far bigger than the base. A carry sweep from the least significant end fixes that: 32 leaves
+digit 2 and carries 3; 52+3 = 55 leaves 5 and carries 5; and so on, giving [2,5,6,6,0,0,7],
+which read back the other way is 7006652. That is the whole algorithm. The only expensive
+part is the convolution, and Section 1.3 says how to get it cheaply.
+Limbs. Nothing forces one decimal digit per coefficient. You may pack several digits
+into each one: with 4 digits per coefficient the base is B = 104 and 123456789 becomes
+[6789,2345,1], meaning 1·B2+2345·B+6789. Each such packed coefficient is called a limb
+— one ”digit” of the big number in base B, and one coefficient of the polynomial. Packing
+is worth doing: a 20000-digit operand is 20000 coefficients in base 10 but only 5000 in base
+104, so the transform is a quarter as long. The skeleton uses B = 104.
+BUET - CSE Department 3 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 4 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+Why not pack more? The mantissa. Your FFT works in double-precision
+floating point, but the true convolution coefficients are integers, so the last step of
+multiply transform is to round what comes back. Rounding only recovers the right integer
+if that integer was representable in the first place. A double carries a 53-bit mantissa, so
+it holds integers exactly up to 253 ≈ 9 × 1015 and starts skipping values above it. Each
+coefficient is a sum of at most n products of two limbs, so
+p ≤ n(B −1)2.
+max
+With B = 104 a single product is under 108, and even a million limbs keeps p near 1014 —
+max
+comfortably inside the mantissa, with room to spare for the small rounding error the FFT
+itself introduces. With B = 109 the transform would be half as long, but (B −1)2 ≈ 1018
+exceeds 253 before any summing happens at all: the coefficients could not be represented,
+and rounding would hand you confidently wrong digits. That is the trade: bigger base,
+shorter transform, less headroom. Check any change of base against this bound.
+Padding, here. The product of an n-limb and a q-limb number has n+q−1 coefficients —
+in the worked example above, four digits times four digits gave seven coefficients. A length-4
+transform would have folded p ,p ,p back onto p ,p ,p and produced a plausible looking,
+4 5 6 0 1 2
+entirely wrong number. Pad to N ≥ n+q −1, and to a power of two for the radix-2 FFT.
+2.2 What to implement
+In transforms.py: next power of two, DFTAnalyzer (transform, inverse) and
+FFTTransformer (transform, inverse). The FFT must be radix-2 decimation-in-time —
+recursive or iterative with a bit-reversal permutation is your choice — must compute the
+twiddle factors of a stage once per stage, must reuse the same butterflies for the inverse, and
+must reject a length that is not a power of two. How you write the naive DFT is up to you,
+as long as it computes the defining sums and is not secretly an FFT.
+In bigmul.py: to limbs, from limbs (with the carry sweep), multiply transform,
+multiply, run single and run benchmark. Negative operands and zero must work; keep
+the sign separate from the magnitude so the transform never sees it.
+2.3 Running it
+Each input file holds two decimal integers, one per line (# starts a comment). Provided:
+inputs/1.txt (12 digits, one negative — hand checkable), 2.txt (200 digits), 3.txt (2048)
+and 4.txt (20000).
+python3 bigmul.py inputs/1.txt --engine dft --out-dir outputs/task_a/1
+python3 bigmul.py inputs/2.txt --engine dft --out-dir outputs/task_a/2
+python3 bigmul.py inputs/3.txt --engine fft --out-dir outputs/task_a/3
+python3 bigmul.py inputs/4.txt --engine fft --out-dir outputs/task_a/4
+python3 bigmul.py --benchmark --out-dir outputs/task_a/benchmark
+Run inputs 1 and 2 through both engines at some point: identical products are the
+cheapest check that your FFT agrees with your DFT.
+BUET - CSE Department 4 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 5 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+2.4 Outputs
+Each single run writes product.txt (the product as one decimal string) and report.txt
+(input path, engine, digit counts, base, limb counts, the transform length N used, product
+length, and the verification verdict). Verification compares against int(a) * int(b) and
+prints MATCH or MISMATCH. Everything in report.txt is written by your code — there is no
+separate write-up to hand in.
+2.5 Benchmark
+run benchmark is already written for you in the skeleton. It calls your multiply() on
+operands of growing size, drops a curve once one measurement runs past a time budget (so
+a slow machine gives a shorter curve rather than hanging), and writes runtime bigmul.png
+with the timing table in report.txt. Run it once your transforms work.
+What to look at when it finishes: on log-log axes the slope of a curve is its exponent, so
+the plot should show that the two curves are not parallel. Absolute times depend on your
+implementations, and at small sizes either engine may come out ahead — that is a real effect
+of constant factors, not a bug. If you implement the optional multiply schoolbook, a third
+curve appears automatically.
+3 Task B: blurring an image in the frequency domain
+3.1 A blur is a convolution
+Each output pixel of a blur is a weighted average of the input pixels around it, with the
+weights given by a kernel h:
+(cid:88)(cid:88)
+(I ∗h)[r,c] = I[r−i, c−j]h[i,j].
+i j
+It is the same operation as Task A with two indices instead of one. Done directly it costs
+O(N2K2) for an N ×N image and a K×K kernel: every one of the N2 output pixels sums
+K2 terms.
+The kernels. image utils.make kernel builds three, all normalised to sum to 1 so the
+picture does not change brightness. A gaussian is the familiar soft blur; a motion kernel is
+a straight streak, as if the camera moved during the exposure; and a bokeh kernel is a filled
+disc. The last one is what a real lens does when it is out of focus: a focused lens maps each
+point of the scene to a point on the sensor, but a defocused one spreads that point into a
+small image of the aperture — a disc, for a circular aperture. So the kernel is that disc, and
+every bright point in the scene is replaced by a bright disc of the same radius. That is why
+the night skyline in Figure 1 dissolves into overlapping circles rather than a smooth haze:
+window lights are near-point sources, and each one becomes a copy of the kernel. It is worth
+looking at kernel.png in your output directory alongside the blurred image.
+BUET - CSE Department 5 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 6 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+3.2 The 2D DFT, and why it is two passes of 1D transforms
+An image is a two-dimensional signal, so it has a two-dimensional spectrum F[u,v], where
+u counts vertical oscillations and v horizontal ones:
+P−1Q−1
+F[u,v] =
+(cid:88)(cid:88)
+f[r,c]
+e−2πj(u
+P
+r+v
+Q
+c)
+.
+r=0 c=0
+Low (u,v) describe slow, broad variation — the sky, a wall; high (u,v) describe fine detail
+— edges, texture, noise.
+Evaluated as written this is hopeless: PQ output entries, each a sum over PQ input
+pixels, so O(N4). But the exponential factorises, e−2πj(ur/P+vc/Q) = e−2πjur/P ·e−2πjvc/Q, and
+only the second factor involves c, so it can be pulled out of the inner sum:
+(cid:32) (cid:33)
+P−1 Q−1
+(cid:88) (cid:88)
+F[u,v] = e−2πjur/P f[r,c]e−2πjvc/Q .
+r=0 c=0
+(cid:124) (cid:123)(cid:122) (cid:125)
+1DDFTofrowr
+The bracket is just the 1D DFT of row r, and the outer sum is then a 1D DFT down each
+column of those results. This is separability: transform every row, then transform every
+column of what you got, using the same 1D routine both times. Cost for a square image:
+2N transforms of length N, so O(N3) with your naive DFT and O(N2logN) with your FFT
+— against O(N4) for the double sum. The inverse works the same way.
+The blur then follows Section 1.3 exactly, one dimension at a time: pad, 2D transform
+of image and kernel, multiply the two spectra pointwise, 2D inverse transform, take the real
+part, crop. The pointwise multiply is also where the intuition lives — each spatial frequency
+of the image is simply scaled by the kernel’s response at that frequency. A blur kernel has a
+spectrum close to 1 near the origin and near 0 far from it, so low frequencies pass through
+untouched while fine detail is multiplied away. Blurring is low-pass filtering, and here you
+can watch it happen entry by entry.
+3.3 What to implement
+In image conv.py: transform 2d and inverse 2d (the row-then-column passes),
+convolve plane (linear and circular), convolve image (a colour image is three indepen-
+dent planes), convolve plane direct (the literal four-loop spatial convolution, used as the
+correctness oracle and as a benchmark curve), run single and run benchmark. The trans-
+form core is the same transforms.py — you do not write a second one.
+3.4 Padding and cropping in two dimensions
+The padding rule applies per axis: the full convolution of an (H,W) image with a (k ,k )
+h w
+kernel is (H+k −1, W+k −1), so zero-pad both to at least that, and to the next power of
+h w
+two in each dimension for the radix-2 FFT. Two dimensions add one step: after the inverse
+transform, take the real part and crop the (H,W) window starting at (⌊k /2⌋,⌊k /2⌋). The
+h w
+BUET - CSE Department 6 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 7 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+kernel sits at the origin of the padded array rather than at its centre, so the result comes
+out displaced by half a kernel; skipping the crop leaves the whole image shifted diagonally.
+You must also produce the same blur without padding, transforming at exactly (H,W)
+with the kernel wrapped around the origin. That is circular convolution, and in two dimen-
+sions the wrap is visible: content that should have fallen off one edge of the picture reappears
+on the opposite edge (Figure 1, right). All provided images are 256×256 or 512×512, so
+this path works with radix-2 directly.
+Figure 1: images/skyline512.png with a 19×19 bokeh kernel; each window light becomes
+a disc. Centre: the correct linear convolution — note that it darkens slightly towards the
+border, because zero padding treats the world outside the frame as black. Right: the same
+computation with no padding, which wraps content around from the opposite edge.
+3.5 Running it
+python3 image_conv.py images/skyline512.png --kernel bokeh --param 9 \
+--engine fft --out-dir outputs/task_b/skyline_bokeh
+python3 image_conv.py images/sunset512.png --gray --kernel motion --param 41 \
+--engine fft --out-dir outputs/task_b/sunset_motion
+python3 image_conv.py images/skyline256.png --gray --kernel gaussian --param 21 \
+--engine dft --out-dir outputs/task_b/skyline256_gaussian_dft
+python3 image_conv.py images/skyline512.png --benchmark \
+--out-dir outputs/task_b/benchmark
+All four are required. The third drives the same pipeline with the naive DFT instead of
+the FFT, and must produce the same picture.
+3.6 Outputs
+Each single run writes blurred.png (linear), wraparound.png (circular), kernel.png,
+comparison.png (the three side by side) and report.txt (image size, kernel, engine, linear-
+convolution size, transform size used, verification result).
+Verification: convolve the top-left 64×64 corner both ways — through your transform
+and through convolve plane direct — and report max|spectral−direct|. Expect about
+10−15; anything above 10−9 is a bug, not rounding. The oracle is never run on a full image
+because at O(N2K2) in pure Python it would take minutes.
+BUET - CSE Department 7 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 8 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+3.7 Benchmark
+run benchmark is already written for you here too. It calls your convolve plane and
+convolve plane direct to run two studies on one grayscale plane, and writes both plots
+and both timing tables:
+(cid:136)
+Growing image, fixed kernel — the DFT route, the FFT route and the direct spatial
+convolution on N ×N crops. → runtime vs image size.png
+(cid:136)
+Growing kernel, fixed image — the direct convolution against the FFT route as the
+bokeh radius grows. → runtime vs kernel size.png
+As in Task A, each sweep stops once a measurement exceeds a time budget, so a slow
+implementation produces a shorter curve instead of hanging.
+Figure 2: The second study, measured with a correct implementation. The direct cost grows
+with the kernel; the frequency-domain cost does not depend on the kernel size at all, since
+the kernel is padded to the same transform size whatever its width. Somewhere in between,
+the two cross.
+4 Bonus
+Optional, graded on top of the 100 marks. Each must actually run — leave its output
+directory in your submission as the evidence.
+(cid:136)
+Arbitrary-length FFT (+15). Implement ArbitraryLengthFFT so any N is trans-
+formed in O(N logN): Bluestein’s chirp-z algorithm (rewrite the DFT as a convolution
+and evaluate it with a radix-2 FFT of length ≥ 2N −1), or a mixed-radix Cooley-Tukey
+that factorises N. Then run both tasks with --engine arbitrary, transforming at the
+exact linear-convolution size — in Task B that alone drops the padded area by more than
+half.
+BUET - CSE Department 8 Due: Sat 5 Sep, 1:00 PM
+
+=== PAGE 9 ===
+CSE 220 - Signals and Linear Systems Offline: DFT & FFT
+(cid:136)
+Exact multiplication with the NTT (+10). ReplacethecomplexexponentialsofTask
+A with powers of a primitive root modulo a prime such as p = 998244353 = 119·223 +1
+(primitiveroot3), soeveryoperationisexactandthemantissaargumentabovedisappears
+entirely. The modulus imposes its own bound in its place — every product coefficient must
+stay below p, so the base has to come down accordingly. Verify against your floating-point
+FFT on inputs/4.txt.
+5 Marks distribution
+Component What it covers Marks
+transforms.py Naive DFT/IDFT and radix-2 FFT/IFFT 25
+Task A Digit packing and carries, spectral multiplication,
+33
+correct products with verification
+Task B Separable 2D transform, linear convolution with padding
+37
+and cropping, circular demonstration
+Code Organisation, readability, no duplicated core 5
+Total 100
+Bonus Arbitrary-length FFT (Bluestein or mixed-radix) +15
+Bonus Exact multiplication with the NTT +10
+6 Submission
+<student_id>/
+|-- transforms.py
+|-- bigmul.py
+|-- image_conv.py
+|-- cmd.txt # the exact commands you ran
+‘-- outputs/
+|-- task_a/1..4/ # report.txt and product.txt
+|-- task_a/benchmark/ # runtime_bigmul.png, report.txt
+|-- task_b/<each run>/ # comparison.png, report.txt
+‘-- task_b/benchmark/ # both runtime PNGs, report.txt
+Submit as <student id>.zip. Do not include inputs/, images/, expected outputs/,
+the provided modules, virtual environments, cache folders, or the blurred PNGs other than
+the comparison figures.
+Deadline: Saturday, 5 September 2026, 1:00 PM
+BUET - CSE Department 9 Due: Sat 5 Sep, 1:00 PM
+
