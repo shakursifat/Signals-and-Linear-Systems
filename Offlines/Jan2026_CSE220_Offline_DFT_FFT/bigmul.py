@@ -10,6 +10,7 @@ Usage (the command line is already wired up for you):
     python3 bigmul.py inputs/1.txt --engine fft --out-dir outputs/1
     python3 bigmul.py inputs/3.txt --engine dft --out-dir outputs/3
     python3 bigmul.py --benchmark --out-dir outputs/benchmark
+    python3 bigmul.py inputs/1.txt --engine arbitrary --out-dir outputs/task_a/1
 
 Restrictions: no numpy.fft / scipy.fft / numpy.convolve / scipy.signal, and
 no Python big-integer multiplication of the operands themselves. Python's

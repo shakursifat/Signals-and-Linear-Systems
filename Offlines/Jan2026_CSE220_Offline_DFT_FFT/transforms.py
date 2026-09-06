@@ -245,7 +245,7 @@ class ArbitraryLengthFFT(FFTTransformer):
         # b[n] = conj(w[n]) for n = 0..N-1, and b[M-n] = conj(w[n]) for n=1..N-1
         b = np.zeros(M, dtype=np.complex128)
         b[:N] = np.conj(w)
-        b[M - N + 1:] = np.conj(w[1:])
+        b[M - N + 1:] = np.conj(w[1:][::-1])
 
         # Convolve a (zero-padded) with b using radix-2 FFT
         A = self._fft_core(np.pad(a, (0, M - N)))
